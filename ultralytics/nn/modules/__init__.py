@@ -64,6 +64,7 @@ from .conv import (
     CBAM,
     ChannelAttention,
     Concat,
+    ConvCustom,
     Conv,
     Conv2,
     ConvTranspose,
@@ -104,6 +105,7 @@ from .transformer import (
 
 __all__ = (
     "Conv",
+    "ConvCustom",
     "Conv2",
     "LightConv",
     "RepConv",

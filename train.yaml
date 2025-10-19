@@ -1,0 +1,20 @@
+path: /home/yukun/mycode/RTAnormalyDetection/ultralytics/datasets/yolo_RTA_tif
+train: images/train
+val: images/val
+test: images/test
+
+channels: 1   # 输入通道数
+nc: 12
+names:
+  0: 伪缺陷
+  1: 裂纹
+  2: 焊缝
+  3: 气孔
+  4: 未焊透
+  5: 咬边
+  6: 夹渣
+  7: 未熔合
+  8: 夹钨
+  9: 无缺陷
+  10: 焊瘤
+  11: 内凹

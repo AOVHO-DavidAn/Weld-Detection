@@ -1,0 +1,8 @@
+{
+    "input_directory": "data/Raw_data",
+    "output_directory": "data/compressed_images",
+    "json_directory": "data/json_files",
+    "image_format": "jpg",
+    "compression_quality": 85,
+    "supported_formats": ["tif", "tiff"]
+}
