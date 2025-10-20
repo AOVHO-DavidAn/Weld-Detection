@@ -60,7 +60,7 @@ if torch.cuda.is_available():
 # 创建单通道输入的YOLO模型
 print("正在创建单通道YOLO模型...")
 model_size = 'yolov8n'
-model = create_single_channel_model(f'{model_size}.yaml')
+model = create_single_channel_model(f'{model_size}.yaml',pretrain=pretrain)
 
 # 验证模型结构
 verify_model_structure(model)
