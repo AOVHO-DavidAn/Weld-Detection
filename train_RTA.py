@@ -6,7 +6,7 @@ def create_single_channel_model(config_path, pretrain=False):
     """创建支持单通道输入的YOLO模型"""
     # 从配置文件创建模型
     if pretrain:
-        model = YOLO('datasets/yolov8n.pt') # 使用预训练权重
+        model = YOLO('models/yolov8n.pt') # 使用预训练权重
     else:
         model = YOLO(config_path)
     
@@ -45,10 +45,10 @@ os.environ['CUDA_VISIBLE_DEVICES'] = gpu_list
 # gpu_num = len(gpu_list.split(','))
 
 imgsz = 4096  # 输入图像尺寸
-batch_size = 1  # 批量大小
+batch_size = 2  # 批量大小
 uint16flag = False  # 是否使用uint16数据
 dtype = '_uint16' if uint16flag else ''
-pretrain = False  # 是否使用预训练权重
+pretrain = True  # 是否使用预训练权重
 
 # 检查GPU可用性
 print("CUDA可用:", torch.cuda.is_available())
