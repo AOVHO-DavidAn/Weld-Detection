@@ -332,7 +332,7 @@ def visualize_predictions_with_threshold(image_path, model_results, class_names,
     plt.show()
 
 
-def visualize_predictions_and_gt(image_path, label_path, model_results, class_names, save_path=None):
+def visualize_predictions_and_gt(image_path, label_path, model_results, class_names, true_class_names, save_path=None):
     """同时可视化预测结果和真实标签"""
     # 读取图像
     img = cv2.imread(image_path)
@@ -357,7 +357,7 @@ def visualize_predictions_and_gt(image_path, label_path, model_results, class_na
     for label in gt_labels:
         bbox = label['bbox']
         class_id = label['class_id']
-        class_name = class_names[class_id] if class_id < len(class_names) else f'Class_{class_id}'
+        class_name = true_class_names[class_id] if class_id < len(true_class_names) else f'Class_{class_id}'
         color = colors[class_id % len(colors)]
         
         rect = patches.Rectangle(
@@ -595,10 +595,12 @@ model_name = "yolov8l_EMA_ECA_RTA_single_channel_2048_b4_2GPUs_300epochs"
 custom_model_yaml = 'yolov8l_EMA_ECA.yaml' # <--- 替换成您真实的yaml文件路径
 
 # 首先使用 .yaml 文件来构建正确的模型结构
-yolo = YOLO(custom_model_yaml, task="detect")
+# yolo = YOLO(custom_model_yaml, task="detect")
 
-# 然后将训练好的权重加载到这个结构正确的模型上
-yolo.load(f"./runs/detect/{model_name}/weights/best.pt")
+# # 然后将训练好的权重加载到这个结构正确的模型上
+# yolo.load(f"./runs/detect/{model_name}/weights/best.pt")
+
+yolo = YOLO(f"./runs/detect/{model_name}/weights/best.pt")
 
 print("已成功加载自定义模型结构和权重。")
 
@@ -608,8 +610,10 @@ print(yolo.model)
 
 
 # 加载类别名称
-class_names = load_class_names("datasets/yolo_RTA_tif/data.yaml")
-print(f"类别名称: {class_names}")
+train_class_names = load_class_names("datasets/yolo_RTA_tif/data.yaml")
+print(f"类别名称: {train_class_names}")
+
+pred_class_names = load_class_names("datasets/yolo_GuanWang_dataset_uint8/data.yaml")
 
 # image_name = "DJ-RT-20220622-30.jpg"
 # image_name = "YuanXing.png"
@@ -620,7 +624,7 @@ print(f"类别名称: {class_names}")
 
 # image_path = "datasets/" + image_name
 # image_path = "datasets/GuanWang_split/813-unqualified/813-UQ-01/813-UQ-01_part01.tif"
-image_path = "datasets/yolo_GuanWang_dataset_uint8/images/test/813-I-014_seg03.tif"
+image_path = "datasets/yolo_GuanWang_dataset_uint8/images/train/1219-UQ-61_seg09.tif"
 image_name = image_path.split('/')[-1]
 
 # output_dir = "runs/compare/" + image_name.replace('.jpg', '/')
@@ -646,20 +650,20 @@ else:
 
 # 可视化预测结果
 print("可视化预测结果...")
-visualize_predictions(image_path, result, class_names, f"{output_dir}{model_name}_{'negative' if USE_NEGATIVE else 'original'}_predictions.png")
+visualize_predictions(image_path, result, train_class_names, f"{output_dir}{model_name}_{'negative' if USE_NEGATIVE else 'original'}_predictions.png")
 
 # 可视化预测结果（带置信度过滤）
-print("可视化预测结果（置信度 >= 0.5）...")
-visualize_predictions_with_threshold(image_path, result, class_names, 0.5, f"{output_dir}{model_name}_{'negative' if USE_NEGATIVE else 'original'}_predictions_filtered.png")
+print("可视化预测结果（置信度 >= 0.1）...")
+visualize_predictions_with_threshold(image_path, result, train_class_names, 0.1, f"{output_dir}{model_name}_{'negative' if USE_NEGATIVE else 'original'}_predictions_filtered.png")
 
 
 if os.path.exists(label_path):
     #可视化真实标签
     print("可视化真实标签...")
-    visualize_ground_truth(image_path, label_path, class_names, f"{output_dir}{model_name}_ground_truth_visualization.png")
+    visualize_ground_truth(image_path, label_path, pred_class_names, f"{output_dir}{model_name}_ground_truth_visualization.png")
 
     # 可视化预测结果和真实标签的对比
     print("可视化预测结果和真实标签对比...")
-    visualize_predictions_and_gt(image_path, label_path, result, class_names, f"{output_dir}{model_name}_prediction_vs_gt.png")
+    visualize_predictions_and_gt(image_path, label_path, result, train_class_names, pred_class_names, f"{output_dir}{model_name}_prediction_vs_gt.png")
 
 
