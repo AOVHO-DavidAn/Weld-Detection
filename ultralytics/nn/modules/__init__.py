@@ -59,6 +59,8 @@ from .block import (
     ResNetLayer,
     SCDown,
     TorchVision,
+    C3_EMA,
+    C2f_EMA,
 )
 from .conv import (
     CBAM,
@@ -102,6 +104,7 @@ from .transformer import (
     TransformerEncoderLayer,
     TransformerLayer,
 )
+from .eca_module import ECA
 
 __all__ = (
     "Conv",
@@ -181,4 +184,7 @@ __all__ = (
     "TorchVision",
     "Index",
     "A2C2f",
+    "C3_EMA",
+    "ECA",
+    "C2f_EMA",
 )

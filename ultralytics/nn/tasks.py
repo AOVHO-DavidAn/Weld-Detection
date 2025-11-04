@@ -17,6 +17,7 @@ from ultralytics.nn.modules import (
     C2,
     C2PSA,
     C3,
+    C3_EMA,
     C3TR,
     ELAN1,
     OBB,
@@ -69,6 +70,8 @@ from ultralytics.nn.modules import (
     YOLOEDetect,
     YOLOESegment,
     v10Detect,
+    ECA,
+    C2f_EMA,
 )
 from ultralytics.utils import DEFAULT_CFG_DICT, DEFAULT_CFG_KEYS, LOGGER, YAML, colorstr, emojis
 from ultralytics.utils.checks import check_requirements, check_suffix, check_yaml
@@ -1635,6 +1638,8 @@ def parse_model(d, ch, verbose=True):
             SPPELAN,
             C2fAttn,
             C3,
+            C3_EMA,
+            C2f_EMA,
             C3TR,
             C3Ghost,
             torch.nn.ConvTranspose2d,
@@ -1656,6 +1661,8 @@ def parse_model(d, ch, verbose=True):
             C3k2,
             C2fAttn,
             C3,
+            C3_EMA,
+            C2f_EMA,
             C3TR,
             C3Ghost,
             C3x,
@@ -1735,6 +1742,11 @@ def parse_model(d, ch, verbose=True):
             c2 = args[0]
             c1 = ch[f]
             args = [*args[1:]]
+        elif m is ECA:
+            #TODO 需要根据上一层的输出通道动态调整ECA kernel的大小
+            args[0] = ch[f]
+            c2 = ch[f]
+            pass
         else:
             c2 = ch[f]
 
@@ -1771,7 +1783,7 @@ def yaml_model_load(path):
     unified_path = re.sub(r"(\d+)([nslmx])(.+)?$", r"\1\3", str(path))  # i.e. yolov8x.yaml -> yolov8.yaml
     yaml_file = check_yaml(unified_path, hard=False) or check_yaml(path)
     d = YAML.load(yaml_file)  # model dict
-    d["scale"] = guess_model_scale(path)
+    d["scale"] = guess_model_scale(path) if "scale" not in d else d["scale"]
     d["yaml_file"] = str(path)
     return d
 

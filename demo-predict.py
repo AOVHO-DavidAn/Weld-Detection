@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import matplotlib.font_manager as fm
 import os
+import yaml
 
 # 设置matplotlib支持中文显示
 plt.rcParams['font.sans-serif'] = ['DejaVu Sans', 'SimHei', 'Microsoft YaHei', 'Arial Unicode MS']
@@ -60,11 +61,13 @@ def preprocess_image(image_path):
     
     return img_rgb
 
-def load_class_names(classes_file):
+def load_class_names(yaml_file):
     """加载类别名称"""
-    if os.path.exists(classes_file):
-        with open(classes_file, 'r', encoding='utf-8') as f:
-            return [line.strip() for line in f.readlines()]
+    if os.path.exists(yaml_file):
+        with open(yaml_file, 'r', encoding='utf-8') as f:
+            data = yaml.safe_load(f)
+            return data.get('names', [])
+
     else:
         # 默认类别名称
         return ['气孔', '未熔透', '未熔合', '裂纹', '夹渣', '伪缺陷', '焊缝']
@@ -575,23 +578,37 @@ def convert_dtype(image, target_dtype=np.uint8):
         raise ValueError(f"不支持的目标数据类型: {target_dtype}")
 
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '4'
+os.environ['CUDA_VISIBLE_DEVICES'] = '7'
 
 USE_NEGATIVE = False  # 是否使用负片图像进行预测
 USE_UINT16 = False
-BATCH_SIZE = 4
-IMG_SIZE = 1000
-MODEL_SIZE = 'n'
-NUM_GPU = 1
+# BATCH_SIZE = 6
+# IMG_SIZE = 2048
+# PRETRAIN = True
+# MODEL_SIZE = 'm'
+# NUM_GPU = 2
 
-# model_name = "yolov8s_RTA_single_channel_1000_b10_1GPUs"
-model_name = f"yolov8{MODEL_SIZE}_RTA_single_channel_{IMG_SIZE}_b{BATCH_SIZE}_{NUM_GPU}GPUs{'_uint16' if USE_UINT16 else ''}"
+model_name = "yolov8l_EMA_ECA_RTA_single_channel_2048_b4_2GPUs_300epochs"
+# model_name = f"yolov8{MODEL_SIZE}_RTA_single_channel_{'pretrain_' if PRETRAIN else ''}{IMG_SIZE}_b{BATCH_SIZE}_{NUM_GPU}GPUs{'_uint16' if USE_UINT16 else ''}"
 
-# 加载模型
-yolo = YOLO(f"./runs/detect/{model_name}/weights/best.pt", task="detect")
+# 假设您的自定义配置文件在项目根目录的 'models' 文件夹下
+custom_model_yaml = 'yolov8l_EMA_ECA.yaml' # <--- 替换成您真实的yaml文件路径
+
+# 首先使用 .yaml 文件来构建正确的模型结构
+yolo = YOLO(custom_model_yaml, task="detect")
+
+# 然后将训练好的权重加载到这个结构正确的模型上
+yolo.load(f"./runs/detect/{model_name}/weights/best.pt")
+
+print("已成功加载自定义模型结构和权重。")
+
+
+# 显示模型详细结构
+print(yolo.model)
+
 
 # 加载类别名称
-class_names = load_class_names("datasets/Raw_data_jpg/classes.txt")
+class_names = load_class_names("datasets/yolo_RTA_tif/data.yaml")
 print(f"类别名称: {class_names}")
 
 # image_name = "DJ-RT-20220622-30.jpg"
@@ -603,7 +620,7 @@ print(f"类别名称: {class_names}")
 
 # image_path = "datasets/" + image_name
 # image_path = "datasets/GuanWang_split/813-unqualified/813-UQ-01/813-UQ-01_part01.tif"
-image_path = "datasets/yolo_RTA_tif/images/test/DJ-RT-20220622-67.tif"
+image_path = "datasets/yolo_GuanWang_dataset_uint8/images/test/813-I-014_seg03.tif"
 image_name = image_path.split('/')[-1]
 
 # output_dir = "runs/compare/" + image_name.replace('.jpg', '/')
@@ -632,8 +649,8 @@ print("可视化预测结果...")
 visualize_predictions(image_path, result, class_names, f"{output_dir}{model_name}_{'negative' if USE_NEGATIVE else 'original'}_predictions.png")
 
 # 可视化预测结果（带置信度过滤）
-print("可视化预测结果（置信度 >= 0.2）...")
-visualize_predictions_with_threshold(image_path, result, class_names, 0.2, f"{output_dir}{model_name}_{'negative' if USE_NEGATIVE else 'original'}_predictions_filtered.png")
+print("可视化预测结果（置信度 >= 0.5）...")
+visualize_predictions_with_threshold(image_path, result, class_names, 0.5, f"{output_dir}{model_name}_{'negative' if USE_NEGATIVE else 'original'}_predictions_filtered.png")
 
 
 if os.path.exists(label_path):

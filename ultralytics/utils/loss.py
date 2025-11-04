@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import math
 
 from ultralytics.utils.metrics import OKS_SIGMA
 from ultralytics.utils.ops import crop_mask, xywh2xyxy, xyxy2xywh
@@ -105,12 +106,205 @@ class DFLoss(nn.Module):
         ).mean(-1, keepdim=True)
 
 
+
+class WIoU:
+    """
+    WIoU Loss.
+    `Wise-IoU: Bounding Box Regression Loss with Dynamic Focusing Mechanism`
+    https://arxiv.org/abs/2301.10051
+    """
+    def __init__(self, reduction: str = 'none'):
+        super(WIoU, self).__init__()
+        self.reduction = reduction
+
+    def __call__(self, pred, target, scale=True):
+        """
+        Args:
+            pred (torch.Tensor): Predicted bboxes, shape (n, 4).
+            target (torch.Tensor): Target bboxes, shape (n, 4).
+            scale (bool): Whether to scale the loss with the dynamic focusing mechanism.
+        Returns:
+            loss (torch.Tensor): WIoU loss.
+        """
+        # 1. 计算 IoU
+        lt = torch.max(pred[:, :2], target[:, :2])
+        rb = torch.min(pred[:, 2:], target[:, 2:])
+        wh = (rb - lt).clamp(min=0)
+        overlap = wh[:, 0] * wh[:, 1]
+        
+        area1 = (pred[:, 2] - pred[:, 0]) * (pred[:, 3] - pred[:, 1])
+        area2 = (target[:, 2] - target[:, 0]) * (target[:, 3] - target[:, 1])
+        union = area1 + area2 - overlap + 1e-7
+        iou = overlap / union
+
+        # 2. 计算中心点距离惩罚项
+        center_pred = (pred[:, :2] + pred[:, 2:]) / 2
+        center_target = (target[:, :2] + target[:, 2:]) / 2
+        dist_center_sq = (center_pred - center_target).pow(2).sum(1)
+
+        # 3. 计算包围框 (Bounding box)
+        c_lt = torch.min(pred[:, :2], target[:, :2])
+        c_rb = torch.max(pred[:, 2:], target[:, 2:])
+        c_wh = (c_rb - c_lt).clamp(min=0)
+        c_diag_sq = c_wh.pow(2).sum(1)
+        
+        # 4. 计算 WIoU
+        # 使用 .detach() 来分离计算图，因为 beta 是一个动态权重，不应参与梯度计算
+        iou_detached = iou.detach()
+        # WIoU v3: beta 是动态计算的
+        beta = (iou_detached / iou_detached.mean()).pow(4).clamp(max=10)
+        
+        # # 计算距离惩罚项 R_WIoU 加入detach防止数值爆炸
+        # r_wiou = torch.exp(dist_center_sq / (c_diag_sq + 1e-7)).detach()
+        
+        # 计算距离惩罚项 R_WIoU
+        # 对 exp 的输入进行截断，防止其过大导致数值爆炸。
+        # 选择一个合理的上限，例如 4.0，因为 exp(4.0) 约等于 55，已经是一个足够大的惩罚。
+        exp_input = torch.clamp(dist_center_sq / (c_diag_sq + 1e-7), max=4.0)
+        r_wiou = torch.exp(exp_input)
+
+        
+        # 计算最终的 WIoU Loss
+        loss_wiou = r_wiou * (1 - iou)
+        
+        if scale:
+            loss_wiou = loss_wiou * beta
+        
+        if self.reduction == 'mean':
+            return loss_wiou.mean()
+        elif self.reduction == 'sum':
+            return loss_wiou.sum()
+        else: # 'none'
+            return loss_wiou
+
+
+
+class IouLoss(nn.Module):
+    ''' :param monotonous: {
+            None: origin
+            True: monotonic FM
+            False: non-monotonic FM
+        }'''
+    momentum = 1e-2
+    alpha = 1.7
+    delta = 2.7
+
+    def __init__(self, ltype='WIoU', monotonous=False):
+        super().__init__()
+        assert getattr(self, f'_{ltype}', None), f'The loss function {ltype} does not exist'
+        self.ltype = ltype
+        self.monotonous = monotonous
+        self.register_buffer('iou_mean', torch.tensor(1.))
+
+    def __getitem__(self, item):
+        if callable(self._fget[item]):
+            self._fget[item] = self._fget[item]()
+        return self._fget[item]
+
+    def forward(self, pred, target, ret_iou=False, **kwargs):
+        self._fget = {
+            # pred, target: x0,y0,x1,y1
+            'pred': pred,
+            'target': target,
+            # x,y,w,h
+            'pred_xy': lambda: (self['pred'][..., :2] + self['pred'][..., 2: 4]) / 2,
+            'pred_wh': lambda: self['pred'][..., 2: 4] - self['pred'][..., :2],
+            'target_xy': lambda: (self['target'][..., :2] + self['target'][..., 2: 4]) / 2,
+            'target_wh': lambda: self['target'][..., 2: 4] - self['target'][..., :2],
+            # x0,y0,x1,y1
+            'min_coord': lambda: torch.minimum(self['pred'][..., :4], self['target'][..., :4]),
+            'max_coord': lambda: torch.maximum(self['pred'][..., :4], self['target'][..., :4]),
+            # The overlapping region
+            'wh_inter': lambda: torch.relu(self['min_coord'][..., 2: 4] - self['max_coord'][..., :2]),
+            's_inter': lambda: torch.prod(self['wh_inter'], dim=-1),
+            # The area covered
+            's_union': lambda: torch.prod(self['pred_wh'], dim=-1) +
+                               torch.prod(self['target_wh'], dim=-1) - self['s_inter'],
+            # The smallest enclosing box
+            'wh_box': lambda: self['max_coord'][..., 2: 4] - self['min_coord'][..., :2],
+            's_box': lambda: torch.prod(self['wh_box'], dim=-1),
+            'l2_box': lambda: torch.square(self['wh_box']).sum(dim=-1),
+            # The central points' connection of the bounding boxes
+            'd_center': lambda: self['pred_xy'] - self['target_xy'],
+            'l2_center': lambda: torch.square(self['d_center']).sum(dim=-1),
+            # IoU
+            'iou': lambda: 1 - self['s_inter'] / self['s_union']
+        }
+
+        if self.training:
+            self.iou_mean.mul_(1 - self.momentum)
+            self.iou_mean.add_(self.momentum * self['iou'].detach().mean())
+
+        ret = self._scaled_loss(getattr(self, f'_{self.ltype}')(**kwargs)), self['iou']
+        delattr(self, '_fget')
+        return ret if ret_iou else ret[0]
+
+    def _scaled_loss(self, loss, iou=None):
+        if isinstance(self.monotonous, bool):
+            beta = (self['iou'].detach() if iou is None else iou) / self.iou_mean
+
+            if self.monotonous:
+                loss *= beta.sqrt()
+            else:
+                divisor = self.delta * torch.pow(self.alpha, beta - self.delta)
+                loss *= beta / divisor
+        return loss
+
+    def _IoU(self):
+        return self['iou']
+
+    def _WIoU(self):
+        dist = torch.exp(self['l2_center'] / self['l2_box'].detach())
+        return dist * self['iou']
+
+    def _EIoU(self):
+        penalty = self['l2_center'] / self['l2_box'] \
+                  + torch.square(self['d_center'] / self['wh_box']).sum(dim=-1)
+        return self['iou'] + penalty
+
+    def _GIoU(self):
+        return self['iou'] + (self['s_box'] - self['s_union']) / self['s_box']
+
+    def _DIoU(self):
+        return self['iou'] + self['l2_center'] / self['l2_box']
+
+    def _CIoU(self, eps=1e-4):
+        v = 4 / math.pi ** 2 * \
+            (torch.atan(self['pred_wh'][..., 0] / (self['pred_wh'][..., 1] + eps)) -
+             torch.atan(self['target_wh'][..., 0] / (self['target_wh'][..., 1] + eps))) ** 2
+        alpha = v / (self['iou'] + v)
+        return self['iou'] + self['l2_center'] / self['l2_box'] + alpha.detach() * v
+
+    def _SIoU(self, theta=4):
+        # Angle Cost
+        angle = torch.arcsin(torch.abs(self['d_center']).min(dim=-1)[0] / (self['l2_center'].sqrt() + 1e-4))
+        angle = torch.sin(2 * angle) - 2
+        # Dist Cost
+        dist = angle[..., None] * torch.square(self['d_center'] / self['wh_box'])
+        dist = 2 - torch.exp(dist[..., 0]) - torch.exp(dist[..., 1])
+        # Shape Cost
+        d_shape = torch.abs(self['pred_wh'] - self['target_wh'])
+        big_shape = torch.maximum(self['pred_wh'], self['target_wh'])
+        w_shape = 1 - torch.exp(- d_shape[..., 0] / big_shape[..., 0])
+        h_shape = 1 - torch.exp(- d_shape[..., 1] / big_shape[..., 1])
+        shape = w_shape ** theta + h_shape ** theta
+        return self['iou'] + (dist + shape) / 2
+
+    def __repr__(self):
+        return f'{self.__name__}(iou_mean={self.iou_mean.item():.3f})'
+
+    __name__ = property(lambda self: self.ltype)
+
+
+
 class BboxLoss(nn.Module):
     """Criterion class for computing training losses for bounding boxes."""
 
     def __init__(self, reg_max: int = 16):
         """Initialize the BboxLoss module with regularization maximum and DFL settings."""
         super().__init__()
+        # self.wiou_loss = WIoU(reduction='none')
+        self.wiou_loss = IouLoss(ltype='WIoU').cuda()
         self.dfl_loss = DFLoss(reg_max) if reg_max > 1 else None
 
     def forward(
@@ -127,6 +321,12 @@ class BboxLoss(nn.Module):
         weight = target_scores.sum(-1)[fg_mask].unsqueeze(-1)
         iou = bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, CIoU=True)
         loss_iou = ((1.0 - iou) * weight).sum() / target_scores_sum
+
+        # # 新的 WIoU Loss 代码
+        # # 直接调用 self.wiou_loss 计算每个正样本的损失
+        # loss_iou_unweighted = self.wiou_loss(pred_bboxes[fg_mask], target_bboxes[fg_mask])
+        # # 应用权重并进行归一化，与原始逻辑保持一致
+        # loss_iou = (loss_iou_unweighted * weight).sum() / target_scores_sum
 
         # DFL loss
         if self.dfl_loss:
