@@ -588,7 +588,7 @@ USE_UINT16 = False
 # MODEL_SIZE = 'm'
 # NUM_GPU = 2
 
-model_name = "yolov8l_EMA_ECA_RTA_single_channel_2048_b4_2GPUs_300epochs"
+model_name = "yolov8l_EMA_ECA_RTA_single_channel_pretrain_custom_2048_b8_4GPUs_300epochs2"
 # model_name = f"yolov8{MODEL_SIZE}_RTA_single_channel_{'pretrain_' if PRETRAIN else ''}{IMG_SIZE}_b{BATCH_SIZE}_{NUM_GPU}GPUs{'_uint16' if USE_UINT16 else ''}"
 
 # 假设您的自定义配置文件在项目根目录的 'models' 文件夹下
@@ -600,7 +600,7 @@ custom_model_yaml = 'yolov8l_EMA_ECA.yaml' # <--- 替换成您真实的yaml文�
 # # 然后将训练好的权重加载到这个结构正确的模型上
 # yolo.load(f"./runs/detect/{model_name}/weights/best.pt")
 
-yolo = YOLO(f"./runs/detect/{model_name}/weights/best.pt")
+yolo = YOLO(f"./runs_yolo_RTA_tif/{model_name}/weights/best.pt")
 
 print("已成功加载自定义模型结构和权重。")
 
@@ -624,7 +624,7 @@ pred_class_names = load_class_names("datasets/yolo_GuanWang_dataset_uint8/data.y
 
 # image_path = "datasets/" + image_name
 # image_path = "datasets/GuanWang_split/813-unqualified/813-UQ-01/813-UQ-01_part01.tif"
-image_path = "datasets/yolo_GuanWang_dataset_uint8/images/train/1219-UQ-61_seg09.tif"
+image_path = "datasets/yolo_RTA_tif/images/val/RRT-40R.tif"
 image_name = image_path.split('/')[-1]
 
 # output_dir = "runs/compare/" + image_name.replace('.jpg', '/')

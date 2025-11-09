@@ -2,10 +2,43 @@ from ultralytics import YOLO
 import torch
 import os
 import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
 from collections import OrderedDict
 
 plt.rcParams['font.sans-serif'] = ['SimHei', 'DejaVu Sans']  # 用于显示中文标签
 plt.rcParams['axes.unicode_minus'] = False  # 用于显示负号
+
+
+def setup_chinese_font():
+    """设置中文字体"""
+    try:
+        # 尝试使用系统中的中文字体
+        font_paths = [
+            '/home/yukun/.fonts/SourceHanSansSC-Regular.otf',  # 自定义下载的字体路径
+            '/home/yukun/.fonts/SimHei.ttf',  # 自定义下载的字体路径
+        ]
+        
+        for font_path in font_paths:
+            print(f"检查字体路径: {font_path}")
+            if os.path.exists(font_path): 
+                print(f"找到字体: {font_path}")
+                prop = fm.FontProperties(fname=font_path)
+                plt.rcParams['font.family'] = prop.get_name()
+                print(f"使用字体: {font_path}")
+                return prop
+        
+        # 如果没有找到合适的字体，使用默认设置
+        print("未找到中文字体，使用默认设置")
+        return None
+        
+    except Exception as e:
+        print(f"字体设置失败: {e}")
+        return None
+
+# 初始化字体
+chinese_font = setup_chinese_font()
+
+
 
 def create_model(config_path, custom=True, pretrain=False):
     """
@@ -120,16 +153,16 @@ def verify_model_structure(model):
     print("=== 验证完成 ===\n")
 
 
-gpu_list = '3,4'
+gpu_list = '4,5,6'
 # 只使用GPU 0
 os.environ['CUDA_VISIBLE_DEVICES'] = gpu_list
 gpu_num = len(gpu_list.split(','))
 
-# dataset = 'yolo_RTA_tif'
-dataset = 'yolo_GuanWang_dataset_uint8'
-data_yaml = f'datasets/{dataset}/data.yaml'
-imgsz = 2048  # 输入图像尺寸
-batch_size = 4  # 批量大小
+dataset = 'yolo_RTA_tif'
+# dataset = 'yolo_GuanWang_dataset_uint8'
+data_yaml = f'datasets/{dataset}/data_origin.yaml'
+imgsz = 1800  # 输入图像尺寸
+batch_size = 6  # 批量大小
 uint16flag = False  # 是否使用uint16数据
 dtype = '_uint16' if uint16flag else ''
 pretrain = True  # 是否使用预训练权重
@@ -145,7 +178,8 @@ if torch.cuda.is_available():
 
 # 创建单通道输入的YOLO模型
 # print("正在创建单通道YOLO模型...")
-model_name = 'yolov8l_EMA_ECA'  # 模型大小，可以是'yolov8n', 'yolov8s', 'yolov8m', 'yolov8l', 'yolov8x'
+# model_name = 'yolov8l_EMA_ECA'  # 模型大小，可以是'yolov8n', 'yolov8s', 'yolov8m', 'yolov8l', 'yolov8x'
+model_name = 'yolo11l_EMA_ECA'  # 使用自定义的YOLOv11模型结构
 model = create_model(f'{model_name}.yaml', custom=custom, pretrain=pretrain)
 
 # 验证模型结构
@@ -160,7 +194,7 @@ model.train(
     epochs=epochs, 
     imgsz=imgsz, 
     batch=batch_size,
-    project=dataset, 
+    project='runs_' + dataset, 
     name=f'{model_name}_RTA_single_channel_{"pretrain_" if pretrain else ""}{"custom_" if custom else ""}{imgsz}_b{batch_size}_{torch.cuda.device_count()}GPUs{dtype}_{epochs}epochs', 
     amp=False,  # 禁用AMP
     verbose=True  # 显示详细训练信息

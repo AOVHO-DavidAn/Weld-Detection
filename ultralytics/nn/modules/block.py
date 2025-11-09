@@ -410,27 +410,27 @@ class C3_EMA(nn.Module):
         """
         super().__init__()
         c_ = int(c2 * e)  # hidden channels
-        self.cv1 = Conv(c1, c_, 1, 1)
-        self.cv2 = Conv(c1, c_, 1, 1)
-        self.cv3 = Conv(2 * c_, c2, 1)  # optional act=FReLU(c2)
-        self.attention = EMA(c_)  # EMA attention module
-        self.m = nn.Sequential(*(Bottleneck(c_, c_, shortcut, g, k=((1, 1), (3, 3)), e=1.0) for _ in range(n)))
-        # self.ema_cv1 = Conv(c1, c_, 1, 1)
-        # self.ema_cv2 = Conv(c1, c_, 1, 1)
-        # self.ema_cv3 = Conv(2 * c_, c2, 1)  # optional act=FReLU(c2)
-        # self.ema_attention = EMA(c_)  # EMA attention module
-        # self.ema_m = nn.Sequential(*(Bottleneck(c_, c_, shortcut, g, k=((1, 1), (3, 3)), e=1.0) for _ in range(n)))
+        # self.cv1 = Conv(c1, c_, 1, 1)
+        # self.cv2 = Conv(c1, c_, 1, 1)
+        # self.cv3 = Conv(2 * c_, c2, 1)  # optional act=FReLU(c2)
+        # self.attention = EMA(c_)  # EMA attention module
+        # self.m = nn.Sequential(*(Bottleneck(c_, c_, shortcut, g, k=((1, 1), (3, 3)), e=1.0) for _ in range(n)))
+        self.ema_cv1 = Conv(c1, c_, 1, 1)
+        self.ema_cv2 = Conv(c1, c_, 1, 1)
+        self.ema_cv3 = Conv(2 * c_, c2, 1)  # optional act=FReLU(c2)
+        self.ema_attention = EMA(c_)  # EMA attention module
+        self.ema_m = nn.Sequential(*(Bottleneck(c_, c_, shortcut, g, k=((1, 1), (3, 3)), e=1.0) for _ in range(n)))
 
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass through the C3 module with EMA attention."""
         # y1 = self.m(self.cv1(x))
         # y1 = self.attention(y1)
-        y1 = self.cv1(x)
-        y1 = self.attention(y1)
-        y1 = self.m(y1)
-        y2 = self.cv2(x)
-        return self.cv3(torch.cat((y1, y2), 1))
+        y1 = self.ema_cv1(x)
+        y1 = self.ema_attention(y1)
+        y1 = self.ema_m(y1)
+        y2 = self.ema_cv2(x)
+        return self.ema_cv3(torch.cat((y1, y2), 1))
 
 
 
